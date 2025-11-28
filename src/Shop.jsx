@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from "react";
 
-// Initial Dummy Data
+// আপনার দেওয়া API Key টি এখানে সেট করা হয়েছে
+const IMGBB_KEY = "8830f9556245fc1bcc8493b2c50c6760";
+
 const INITIAL_PRODUCTS = [
   { id: 1, name: "MacBook Pro M2", price: 1499, img: "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=500&q=80" },
   { id: 2, name: "Sony WH-1000XM5", price: 348, img: "https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?auto=format&fit=crop&w=500&q=80" },
-  { id: 3, name: "iPhone 15 Pro", price: 999, img: "https://images.unsplash.com/photo-1696446701796-da61225697cc?auto=format&fit=crop&w=500&q=80" },
-  { id: 4, name: "Mechanical Keychron", price: 89, img: "https://images.unsplash.com/photo-1595225476474-87563907a212?auto=format&fit=crop&w=500&q=80" },
 ];
 
 export default function Shop() {
   // --- STATE MANAGEMENT ---
-  const [view, setView] = useState("shop");
+  const [view, setView] = useState("shop"); // 'shop', 'cart', 'admin-login', 'admin'
   const [products, setProducts] = useState(INITIAL_PRODUCTS);
   const [cart, setCart] = useState({});
   
@@ -18,6 +18,7 @@ export default function Shop() {
   const [password, setPassword] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: "", price: "", img: "" });
+  const [isUploading, setIsUploading] = useState(false); // লোডিং স্টেট
 
   // --- LOCAL STORAGE LOGIC ---
   useEffect(() => {
@@ -75,42 +76,52 @@ export default function Shop() {
     }
   };
 
-  // IMAGE UPLOAD LOGIC (Base64)
-  const handleImageUpload = (e) => {
+  // --- IMGBB IMAGE UPLOAD ---
+  const handleImageUpload = async (e) => {
     const file = e.target.files[0];
-    if (file) {
-      // Check file size (Limit to 500KB to prevent LocalStorage crash)
-      if (file.size > 500000) {
-        alert("File is too big! Please upload an image less than 500KB.");
-        return;
-      }
+    if (!file) return;
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setNewProduct({ ...newProduct, img: reader.result });
-      };
-      reader.readAsDataURL(file);
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("image", file);
+
+    try {
+      // ImgBB API Call
+      const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        setNewProduct({ ...newProduct, img: data.data.url });
+      } else {
+        alert("Upload Failed: " + (data.error ? data.error.message : "Unknown Error"));
+      }
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      alert("Something went wrong while uploading. Check your internet connection.");
+    } finally {
+      setIsUploading(false);
     }
   };
 
   const addProduct = () => {
     if (!newProduct.name || !newProduct.price || !newProduct.img) {
-      alert("Please fill all fields and upload an image!");
+      alert("Please fill name, price and upload an image!");
       return;
     }
     const newId = Date.now();
     const productToAdd = { ...newProduct, id: newId, price: Number(newProduct.price) };
     
     setProducts([...products, productToAdd]);
-    setNewProduct({ name: "", price: "", img: "" }); // Reset Form
-    
-    // Clear the file input visually
-    document.getElementById('fileInput').value = ""; 
+    setNewProduct({ name: "", price: "", img: "" });
+    document.getElementById('fileInput').value = ""; // Clear file input
     alert("Product Added Successfully!");
   };
 
   const deleteProduct = (id) => {
-    if (window.confirm("Are you sure?")) {
+    if (window.confirm("Are you sure you want to delete this product?")) {
       setProducts(products.filter(p => p.id !== id));
       const newCart = { ...cart };
       delete newCart[id];
@@ -119,11 +130,15 @@ export default function Shop() {
   };
 
   // --- RENDER VIEWS ---
+  
+  // 1. SHOP VIEW
   const renderShop = () => (
     <div className="grid">
       {products.map((product) => (
         <div key={product.id} className="card">
-          <img src={product.img} alt={product.name} />
+          <div className="card-img-container">
+            <img src={product.img} alt={product.name} onError={(e) => e.target.src='https://placehold.co/400?text=Error'} />
+          </div>
           <div className="card-body">
             <h3>{product.name}</h3>
             <div className="price">${product.price}</div>
@@ -136,9 +151,10 @@ export default function Shop() {
     </div>
   );
 
+  // 2. CART VIEW
   const renderCart = () => (
     <div className="cart-container">
-      <h2 style={{borderBottom: '2px solid #eee', paddingBottom: '10px'}}>Shopping Cart</h2>
+      <h2 className="section-title">Shopping Cart</h2>
       {Object.keys(cart).length === 0 ? (
         <p style={{textAlign:'center', color:'#888', marginTop:'20px'}}>Your cart is currently empty.</p>
       ) : (
@@ -148,8 +164,8 @@ export default function Shop() {
             if (!product) return null;
             return (
               <div key={id} className="cart-item">
-                <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
-                  <img src={product.img} style={{width:'60px', height:'60px', borderRadius:'8px', objectFit:'cover'}} />
+                <div className="cart-info">
+                  <img src={product.img} />
                   <div>
                     <h4 style={{margin:0}}>{product.name}</h4>
                     <small style={{color:'#888'}}>${product.price} x {cart[id]}</small>
@@ -157,17 +173,17 @@ export default function Shop() {
                 </div>
                 <div className="cart-controls">
                   <button onClick={() => removeFromCart(id)}>-</button>
-                  <span style={{margin:'0 10px'}}>{cart[id]}</span>
+                  <span>{cart[id]}</span>
                   <button onClick={() => addToCart(id)}>+</button>
                 </div>
-                <div style={{fontWeight:'bold'}}>${product.price * cart[id]}</div>
+                <div className="item-total">${product.price * cart[id]}</div>
               </div>
             );
           })}
           <div className="total-section">
-            Total: <span style={{color:'var(--primary)'}}>${getTotalPrice()}</span>
+            Total: <span>${getTotalPrice()}</span>
           </div>
-          <button className="btn btn-primary" style={{marginTop:'20px'}} onClick={clearCart}>
+          <button className="btn btn-primary mt-20" onClick={clearCart}>
             Proceed to Checkout
           </button>
         </div>
@@ -175,6 +191,7 @@ export default function Shop() {
     </div>
   );
 
+  // 3. ADMIN LOGIN VIEW
   const renderLogin = () => (
     <div className="admin-login">
       <h2>Admin Access</h2>
@@ -186,13 +203,14 @@ export default function Shop() {
         value={password}
         onChange={(e) => setPassword(e.target.value)}
       />
-      <button className="btn btn-primary" onClick={handleLogin}>Login</button>
+      <button className="btn btn-primary" style={{marginTop:'15px'}} onClick={handleLogin}>Login</button>
     </div>
   );
 
+  // 4. ADMIN DASHBOARD VIEW
   const renderAdmin = () => (
     <div className="dashboard">
-      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
+      <div className="dashboard-header">
         <h2>Admin Dashboard</h2>
         <button className="btn btn-danger" onClick={() => { setIsAdmin(false); setView('shop'); }}>Logout</button>
       </div>
@@ -216,37 +234,43 @@ export default function Shop() {
           onChange={(e) => setNewProduct({...newProduct, price: e.target.value})} 
         />
 
-        {/* FILE UPLOAD INPUT */}
-        <div className="full-width" style={{background: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px dashed #ccc'}}>
-          <label style={{display:'block', marginBottom:'10px', fontWeight:'600'}}>Upload Image:</label>
+        {/* IMAGE UPLOAD SECTION */}
+        <div className="full-width upload-box">
+          <label>Product Image:</label>
           <input 
             type="file" 
             accept="image/*" 
             id="fileInput"
             onChange={handleImageUpload} 
+            disabled={isUploading}
           />
-          {newProduct.img && (
-            <div style={{marginTop: '10px'}}>
-              <p style={{fontSize:'0.8rem', color:'green'}}>Image Loaded Preview:</p>
-              <img src={newProduct.img} alt="Preview" style={{width: '80px', height: '80px', objectFit:'cover', borderRadius:'5px'}} />
+          
+          {isUploading && <p className="loading-text">⏳ Uploading image to cloud... Please wait.</p>}
+          
+          {newProduct.img && !isUploading && (
+            <div className="preview-box">
+              <img src={newProduct.img} alt="Preview" />
+              <p>✅ Image Uploaded Successfully!</p>
             </div>
           )}
         </div>
 
-        <button className="btn btn-primary full-width" onClick={addProduct}>+ Add Product</button>
+        <button className="btn btn-primary full-width" onClick={addProduct} disabled={isUploading}>
+          {isUploading ? "Uploading..." : "+ Add Product"}
+        </button>
       </div>
 
-      {/* Inventory List */}
+      {/* Product List */}
       <h3>Current Inventory ({products.length})</h3>
-      <div>
+      <div className="inventory-list">
         {products.map((p) => (
           <div key={p.id} className="product-row">
-            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-              <img src={p.img} style={{width:'40px', height:'40px', borderRadius:'4px', objectFit:'cover'}} />
+            <div className="row-info">
+              <img src={p.img} onError={(e) => e.target.src='https://placehold.co/50'} />
               <strong>{p.name}</strong>
             </div>
-            <div>
-              <span style={{marginRight:'15px', fontWeight:'bold'}}>${p.price}</span>
+            <div className="row-actions">
+              <span>${p.price}</span>
               <button className="btn btn-danger" onClick={() => deleteProduct(p.id)}>Delete</button>
             </div>
           </div>
@@ -257,19 +281,21 @@ export default function Shop() {
 
   return (
     <div>
+      {/* Navbar */}
       <nav>
-        <h2>LUXE<span style={{color:'#1e40af'}}>TECH</span></h2>
+        <h2>LUXE<span>TECH</span></h2>
         <div className="nav-links">
-          <button className={`nav-btn ${view === 'shop' ? 'active' : ''}`} onClick={() => setView("shop")}>Shop</button>
-          <button className={`nav-btn ${view === 'cart' ? 'active' : ''}`} onClick={() => setView("cart")}>
+          <button className={view === 'shop' ? 'active' : ''} onClick={() => setView("shop")}>Shop</button>
+          <button className={view === 'cart' ? 'active' : ''} onClick={() => setView("cart")}>
             Cart ({totalItems})
           </button>
-          <button className={`nav-btn ${view === 'admin' || view === 'admin-login' ? 'active' : ''}`} onClick={() => setView(isAdmin ? "admin" : "admin-login")}>
+          <button className={view === 'admin' || view === 'admin-login' ? 'active' : ''} onClick={() => setView(isAdmin ? "admin" : "admin-login")}>
             Admin
           </button>
         </div>
       </nav>
 
+      {/* Main Content */}
       <div className="container">
         {view === "shop" && renderShop()}
         {view === "cart" && renderCart()}
