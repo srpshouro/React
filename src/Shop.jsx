@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 
-// Initial Dummy Data (যদি লোকাল স্টোরেজে কিছু না থাকে)
+// Initial Dummy Data
 const INITIAL_PRODUCTS = [
   { id: 1, name: "MacBook Pro M2", price: 1499, img: "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=500&q=80" },
   { id: 2, name: "Sony WH-1000XM5", price: 348, img: "https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?auto=format&fit=crop&w=500&q=80" },
@@ -10,7 +10,7 @@ const INITIAL_PRODUCTS = [
 
 export default function Shop() {
   // --- STATE MANAGEMENT ---
-  const [view, setView] = useState("shop"); // 'shop', 'cart', 'admin-login', 'admin'
+  const [view, setView] = useState("shop");
   const [products, setProducts] = useState(INITIAL_PRODUCTS);
   const [cart, setCart] = useState({});
   
@@ -20,7 +20,6 @@ export default function Shop() {
   const [newProduct, setNewProduct] = useState({ name: "", price: "", img: "" });
 
   // --- LOCAL STORAGE LOGIC ---
-  // Load data on start
   useEffect(() => {
     const savedProducts = localStorage.getItem("shopProducts");
     const savedCart = localStorage.getItem("shopCart");
@@ -28,7 +27,6 @@ export default function Shop() {
     if (savedCart) setCart(JSON.parse(savedCart));
   }, []);
 
-  // Save data on change
   useEffect(() => {
     localStorage.setItem("shopProducts", JSON.stringify(products));
   }, [products]);
@@ -77,23 +75,43 @@ export default function Shop() {
     }
   };
 
+  // IMAGE UPLOAD LOGIC (Base64)
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Check file size (Limit to 500KB to prevent LocalStorage crash)
+      if (file.size > 500000) {
+        alert("File is too big! Please upload an image less than 500KB.");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewProduct({ ...newProduct, img: reader.result });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const addProduct = () => {
     if (!newProduct.name || !newProduct.price || !newProduct.img) {
-      alert("Please fill all fields!");
+      alert("Please fill all fields and upload an image!");
       return;
     }
-    const newId = Date.now(); // Unique ID based on timestamp
+    const newId = Date.now();
     const productToAdd = { ...newProduct, id: newId, price: Number(newProduct.price) };
     
     setProducts([...products, productToAdd]);
-    setNewProduct({ name: "", price: "", img: "" });
+    setNewProduct({ name: "", price: "", img: "" }); // Reset Form
+    
+    // Clear the file input visually
+    document.getElementById('fileInput').value = ""; 
     alert("Product Added Successfully!");
   };
 
   const deleteProduct = (id) => {
-    if (window.confirm("Are you sure you want to delete this product?")) {
+    if (window.confirm("Are you sure?")) {
       setProducts(products.filter(p => p.id !== id));
-      // Remove from cart if exists
       const newCart = { ...cart };
       delete newCart[id];
       setCart(newCart);
@@ -101,13 +119,11 @@ export default function Shop() {
   };
 
   // --- RENDER VIEWS ---
-  
-  // 1. SHOP VIEW
   const renderShop = () => (
     <div className="grid">
       {products.map((product) => (
         <div key={product.id} className="card">
-          <img src={product.img} alt={product.name} onError={(e) => e.target.src='https://placehold.co/400?text=No+Image'} />
+          <img src={product.img} alt={product.name} />
           <div className="card-body">
             <h3>{product.name}</h3>
             <div className="price">${product.price}</div>
@@ -120,7 +136,6 @@ export default function Shop() {
     </div>
   );
 
-  // 2. CART VIEW
   const renderCart = () => (
     <div className="cart-container">
       <h2 style={{borderBottom: '2px solid #eee', paddingBottom: '10px'}}>Shopping Cart</h2>
@@ -160,11 +175,10 @@ export default function Shop() {
     </div>
   );
 
-  // 3. ADMIN LOGIN VIEW
   const renderLogin = () => (
     <div className="admin-login">
       <h2>Admin Access</h2>
-      <p style={{color:'#666'}}>Enter the secured password to manage inventory.</p>
+      <p style={{color:'#666'}}>Enter the secured password.</p>
       <input 
         type="password" 
         className="admin-input" 
@@ -176,7 +190,6 @@ export default function Shop() {
     </div>
   );
 
-  // 4. ADMIN DASHBOARD VIEW
   const renderAdmin = () => (
     <div className="dashboard">
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
@@ -187,12 +200,14 @@ export default function Shop() {
       {/* Add Product Form */}
       <div className="add-product-form">
         <h3 className="full-width">Add New Product</h3>
+        
         <input 
           className="admin-input" 
           placeholder="Product Name" 
           value={newProduct.name} 
           onChange={(e) => setNewProduct({...newProduct, name: e.target.value})} 
         />
+        
         <input 
           className="admin-input" 
           type="number" 
@@ -200,16 +215,28 @@ export default function Shop() {
           value={newProduct.price} 
           onChange={(e) => setNewProduct({...newProduct, price: e.target.value})} 
         />
-        <input 
-          className="admin-input full-width" 
-          placeholder="Image URL (e.g. https://image.com/pic.jpg)" 
-          value={newProduct.img} 
-          onChange={(e) => setNewProduct({...newProduct, img: e.target.value})} 
-        />
+
+        {/* FILE UPLOAD INPUT */}
+        <div className="full-width" style={{background: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px dashed #ccc'}}>
+          <label style={{display:'block', marginBottom:'10px', fontWeight:'600'}}>Upload Image:</label>
+          <input 
+            type="file" 
+            accept="image/*" 
+            id="fileInput"
+            onChange={handleImageUpload} 
+          />
+          {newProduct.img && (
+            <div style={{marginTop: '10px'}}>
+              <p style={{fontSize:'0.8rem', color:'green'}}>Image Loaded Preview:</p>
+              <img src={newProduct.img} alt="Preview" style={{width: '80px', height: '80px', objectFit:'cover', borderRadius:'5px'}} />
+            </div>
+          )}
+        </div>
+
         <button className="btn btn-primary full-width" onClick={addProduct}>+ Add Product</button>
       </div>
 
-      {/* Product List */}
+      {/* Inventory List */}
       <h3>Current Inventory ({products.length})</h3>
       <div>
         {products.map((p) => (
@@ -230,7 +257,6 @@ export default function Shop() {
 
   return (
     <div>
-      {/* Navbar */}
       <nav>
         <h2>LUXE<span style={{color:'#1e40af'}}>TECH</span></h2>
         <div className="nav-links">
@@ -244,7 +270,6 @@ export default function Shop() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <div className="container">
         {view === "shop" && renderShop()}
         {view === "cart" && renderCart()}
